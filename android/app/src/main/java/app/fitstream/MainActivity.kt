@@ -1,12 +1,18 @@
 package app.fitstream
 
+import android.Manifest
+import android.bluetooth.BluetoothManager
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,6 +37,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -39,10 +46,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,6 +100,45 @@ private fun FitStreamScreen() {
         }
     }
 
+    val scope = rememberCoroutineScope()
+    val scaleReader = remember { ScaleReader(context, settings, client, scope) }
+    val scaleState by scaleReader.state.collectAsState()
+
+    val blePermissions = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
+    val blePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { perms ->
+        val allGranted = perms.values.all { it }
+        if (allGranted) {
+            scaleReader.startScan()
+        } else {
+            message = "Bluetooth permission is required to scan for the scale"
+        }
+    }
+
+    fun startScaleScan() {
+        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        if (bluetoothManager?.adapter?.isEnabled != true) {
+            message = "Please turn on Bluetooth first"
+            return
+        }
+        val hasPerms = blePermissions.all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+        if (hasPerms) {
+            scaleReader.startScan()
+        } else {
+            blePermissionLauncher.launch(blePermissions)
+        }
+    }
+
     Column(
         Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -123,6 +172,56 @@ private fun FitStreamScreen() {
                 }) { Text("Open Play Store") }
             }
             else -> Text("Health Connect is not supported on this device.")
+        }
+
+        HorizontalDivider()
+        Text("Smart Scale", style = MaterialTheme.typography.titleMedium)
+        Text("Dr Trust 526 · Tap to scan, then stand on scale to record weight", style = MaterialTheme.typography.bodySmall)
+
+        when (val st = scaleState) {
+            is ScaleState.Idle -> {
+                Button(onClick = { startScaleScan() }) {
+                    Text("Scan scale")
+                }
+                if (settings.lastWeight > 0f) {
+                    val timeStr = settings.lastWeightTime?.atZone(ZoneId.systemDefault())
+                        ?.format(DateTimeFormatter.ofPattern("MMM d, h:mm a")).orEmpty()
+                    Text(
+                        "Last weight: ${settings.lastWeight} kg" + (if (timeStr.isNotEmpty()) " · $timeStr" else ""),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+            is ScaleState.Scanning -> {
+                Text(st.message, color = MaterialTheme.colorScheme.primary)
+                OutlinedButton(onClick = { scaleReader.cancel() }) {
+                    Text("Cancel scan")
+                }
+            }
+            is ScaleState.Connecting -> {
+                Text("Connecting to ${st.deviceName}… Stand on the scale barefoot", color = MaterialTheme.colorScheme.primary)
+                OutlinedButton(onClick = { scaleReader.cancel() }) {
+                    Text("Cancel")
+                }
+            }
+            is ScaleState.Measuring -> {
+                Text("⚖️ Measuring: ${st.currentWeightKg} kg… Stand still", style = MaterialTheme.typography.titleMedium)
+            }
+            is ScaleState.Locked -> {
+                Text("🎯 Weight locked: ${st.weightKg} kg! Saving…", style = MaterialTheme.typography.titleMedium)
+            }
+            is ScaleState.Logged -> {
+                Text("✅ ${st.weightKg} kg logged to ${st.details}!", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
+                Button(onClick = { startScaleScan() }) {
+                    Text("Scan again")
+                }
+            }
+            is ScaleState.Error -> {
+                Text("⚠️ ${st.message}", color = MaterialTheme.colorScheme.error)
+                Button(onClick = { startScaleScan() }) {
+                    Text("Try again")
+                }
+            }
         }
 
         HorizontalDivider()

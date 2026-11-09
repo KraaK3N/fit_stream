@@ -3,7 +3,17 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Read-only access to the data types the Galaxy Fit3 (via Samsung Health) writes. No write permissions. -->
+    <!-- Bluetooth LE permissions for Dr Trust / BLE smart scale -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+
+    <!-- Health Connect: read permissions from Galaxy Fit3 and write weight from smart scale -->
     <uses-permission android:name="android.permission.health.READ_STEPS" />
     <uses-permission android:name="android.permission.health.READ_DISTANCE" />
     <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
@@ -14,6 +24,7 @@
     <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
     <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
+    <uses-permission android:name="android.permission.health.WRITE_WEIGHT" />
     <uses-permission android:name="android.permission.health.READ_BODY_FAT" />
     <uses-permission android:name="android.permission.health.READ_BASAL_METABOLIC_RATE" />
     <!-- Lets the periodic WorkManager job read while the app is closed (Android 14+). -->

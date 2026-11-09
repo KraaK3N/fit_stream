@@ -59,10 +59,12 @@ class HealthReader(private val client: HealthConnectClient, private val zone: Zo
         )
 
         val READ_PERMISSIONS: Set<String> = RECORD_TYPES.map { HealthPermission.getReadPermission(it) }.toSet()
+        val WRITE_PERMISSIONS: Set<String> = setOf(HealthPermission.getWritePermission(WeightRecord::class))
+        val ALL_PERMISSIONS: Set<String> = READ_PERMISSIONS + WRITE_PERMISSIONS
 
-        /** Read permissions plus background/history access where this Health Connect version supports them. */
+        /** Read permissions plus write weight and background/history access where this Health Connect version supports them. */
         fun permissionsToRequest(client: HealthConnectClient): Set<String> {
-            val perms = READ_PERMISSIONS.toMutableSet()
+            val perms = ALL_PERMISSIONS.toMutableSet()
             if (client.features.getFeatureStatus(HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_IN_BACKGROUND) ==
                 HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
             ) perms += HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND

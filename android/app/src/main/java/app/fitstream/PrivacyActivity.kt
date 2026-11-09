@@ -32,7 +32,8 @@ class PrivacyActivity : ComponentActivity() {
                         Text("What FitStream does with your data", style = MaterialTheme.typography.headlineSmall)
                         Text(
                             "FitStream reads steps, distance, heart rate, resting heart rate, sleep, workouts, SpO₂, " +
-                                "calories, weight, body fat and BMR from Health Connect. It never writes to Health Connect."
+                                "calories, weight, body fat and BMR from Health Connect. It also writes weight readings " +
+                                "from your Bluetooth smart scale into Health Connect."
                         )
                         Text(
                             "Heart rate, steps and distance are reduced to daily totals or min/avg/max on the phone. " +

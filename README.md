@@ -1,172 +1,133 @@
-# HCGateway
-HCGateway is a platform to let developers connect to the Health Connect API on Android via a REST API. You can view the documentation for the REST API [here](https://hcgateway.shuchir.dev/)
+# FitStream
 
-<a href="https://www.buymeacoffee.com/shuchir" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a> 
+A personal health dashboard for a Samsung Galaxy Fit3. It follows the design in Sidharth Shambu's post
+[Building a Personal Health Dashboard from Samsung Health Data](https://shambu2k.hashnode.dev/extract-samsung-health-data).
+The repository started as a fork of [HCGateway](https://github.com/ShuchirJ/HCGateway); all of the original code has been replaced.
 
-# How it works
-The platform consists of two parts:
-- A REST API/server
-- A mobile application that pings the server periodically
-
-> [!NOTE]
-> This project is still in development. The API may change without notice. The mobile application is also in development and may not work as expected. Please report any issues you find.
-
-> [!IMPORTANT]
-> The database was recently migrated from Appwrite to MongoDB. If you were using the Appwrite version, you will need to migrate your data to the new database. You can find the migration script in the `scripts/` folder. You will need to install the `appwrite` and `pymongo` libraries to run the script, then run the script with the following command: `python3 migrate_1.5.0.py`.
-
-
-## How it Works
-- The mobile application pings the server every 2 hours to send data. The following data types are supported-
-    - Active Calories Burned (`activeCaloriesBurned`)
-    - Basal Body Temperature (`basalBodyTemperature`)
-    - Basal Metabolic Rate (`basalMetabolicRate`)
-    - Blood Glucose (`bloodGlucose`)
-    - Blood Pressure (`bloodPressure`)
-    - Body Fat (`bodyFat`)
-    - Body Temperature (`bodyTemperature`)
-    - Bone Mass (`boneMass`)
-    - Cervical Mucus (`cervicalMucus`)
-    - Distance (`distance`)
-    - Exercise (`exerciseSession`)
-    - Elevation Gained (`elevationGained`)
-    - Floors Climbed (`floorsClimbed`)
-    - Heart Rate (`heartRate`)
-    - Height (`height`)
-    - Hydration (`hydration`)
-    - Lean Body Mass (`leanBodyMass`)
-    - Menstruation Flow (`menstruationFlow`)
-    - Menstruation Period (`menstruationPeriod`)
-    - Nutrition (`nutrition`)
-    - Ovulation Test (`ovulationTest`)
-    - Oxygen Saturation (`oxygenSaturation`)
-    - Power (`power`)
-    - Respiratory Rate (`respiratoryRate`)
-    - Resting Heart Rate (`restingHeartRate`)
-    - Sleep (`sleepSession`)
-    - Speed (`speed`)
-    - Steps (`steps`)
-    - StepsCadence (`stepsCadence`)
-    - Total Calories Burned (`totalCaloriesBurned`)
-    - VO2 Max (`vo2Max`)
-    - Weight (`weight`)
-    - Wheelchair Pushes (`wheelchairPushes`)
-
-Support for more types is planned for the future.
-
-- Each sync takes approximatly 15 minutes
-- The server encrypts the data using Fernet encryption, then stores it in a mongo database.
-- The server exposes an API to let developers login and get the data for their users.
-
-The platform allows two-way sync, which means you can make changes to your local Health Connect store remotely via REST api.
-
-## Get Started
-- There is a live instance hosted at https://api.hcgateway.shuchir.dev/ that you can use. You can also host your own instance. To learn more on Self Hosting, skip down to the Self Hosting section.
-> [!IMPORTANT]
-> **Use the hosted instance at your own risk. By using the hosted server, you acknowledge all responsibility is waived from the server owner.**
-- You can install the mobile application through the APK file. You can find the latest APK file in the releases section of this repository.
-- The minimum requirement for the APK file is Android Oreo (8.0)
-- Once you install the Android APK file, signup by entering a username and password
-- Once you see a screen showing your user id, you have successfully signed up. Your data will sync in 2 hours. This is customizable. You also have the option to force a sync any time through the application.
-
-## Database
-### Users Structure
 ```
-users {
-    _id: string
-    username: string
-    password: string
-    fcmToken: string
-    expiry: datetime
-    token: string
-    refresh: string
-}
-```
-> [!NOTE]
-> The password of the user encrypted using Argon 2 format. The password is never stored as is, and cannot be retrieved through any API.
-
-### Database Structure
-```
-hcgateway_[user_id]: string {
-    dataType: string {
-        _id: string
-        data: string
-        id: string
-        start: datetime
-        end: datetime
-        app: string
-    }
-}
+Galaxy Fit3 → Samsung Health → Health Connect → FitStream app ──HTTPS + API key──▶ nginx ─▶ Flask ─▶ SQLite
+                                                                                       │
+                                                         build.py (every 8 h) ─▶ index.html (static dashboard)
 ```
 
-### Parameters
-- `$id` - The ID of the object. 
-- `data` - The data of the object encrypted using Fernet. When asked for through the API, the data will be decrypted for you using the user's hashed password found from the user id.
-- `id` - The ID of the object- This is the same as `_id` and is only kept for backward compatibility. May be removed in future versions.
-- `start` - The start date and time of the object
-- `end` - The end date and time of the object. Might not be present for some objects.
-- `app` - The app package string that the object was synced from.
+| Layer       | What it uses                                              |
+|-------------|-----------------------------------------------------------|
+| Phone app   | Kotlin, Jetpack Compose, Health Connect SDK, WorkManager  |
+| Sync server | Python, Flask, SQLite, gunicorn                           |
+| Dashboard   | `build.py` → single static HTML page with Plotly.js       |
+| Serving     | nginx, Docker Compose                                     |
+| Auth        | One API key (`X-API-Key` header)                          |
 
+## Repository layout
 
-## REST API
-The documentation for the REST API can be found at https://hcgateway.shuchir.dev/
+```
+android/            Kotlin app (package app.fitstream) + Dockerfile to build the APK without a local SDK
+server/fitstream/   Flask app: /api/sync, read endpoints, payload validation
+server/build.py     Builds the static dashboard from SQLite
+server/tests/       pytest suite
+docker-compose.yml  api + dashboard rebuilder + nginx
+nginx.conf          Serves the dashboard and proxies /api/
+SECURITY_AUDIT.md   Review of the original HCGateway code and of FitStream
+```
 
-## Mobile Application
-The mobile application is a simple Android application that pings the server every 2 hours (customizable) to send data. It starts a foreground service to do this, and the service will run even if the application is closed. The application is written in React Native.
+## Data collected
 
-## Self Hosting
-You can self host the server and database for full control. However, if you'd like to push from your own server, you must build the mobile application yourself. You can find the instructions to build the mobile application below. This is because the app is packaged with the firebase key, and cannot change it dynamically. Again, firebase is only necessary if you want to push from your own server.
-### Firebase
-Follow these steps to set up Firebase:
-1. Create a new Firebase project at https://console.firebase.google.com/
-2. Add an Android app to the project
-3. Download the `google-services.json` file and place it in the `firebase/` folder as well as the `android/app/` folder
+The app only requests **read** permissions, for the types Samsung Health writes from the Fit3:
 
-### Docker (recommended)
-1. **Prerequisites**\
-    Ensure that you have Docker and Docker Compose installed on your system.
+| Data                         | Health Connect record                            | Sent as                              |
+|------------------------------|--------------------------------------------------|--------------------------------------|
+| Steps and distance           | `StepsRecord`, `DistanceRecord`                  | daily totals                         |
+| Heart rate                   | `HeartRateRecord`                                | daily min / avg / max                |
+| Sleep with stages            | `SleepSessionRecord`                             | one row per session                  |
+| Workouts                     | `ExerciseSessionRecord` (+ calories, distance, HR during the session) | one row per session |
+| SpO₂, resting HR             | `OxygenSaturationRecord`, `RestingHeartRateRecord` | daily averages                     |
+| Weight, body fat, BMR        | `WeightRecord`, `BodyFatRecord`, `BasalMetabolicRateRecord` | each reading            |
 
-2. **Setting up the Environment**
+Raw per-sample heart rate is never uploaded. Each sync re-sends the last 2 days, because the band reaches
+Samsung Health late; the server upserts, so re-sends do not create duplicates. The first sync covers 30 days.
 
-   - You’ll need to configure environment variables before starting the services.
-   - Copy the provided `.env.example` file to `.env` inside the `api/` directory and configure it as necessary. When setting the `MONGO_URI` variable, the following format should be used: `mongodb://<username>:<password>@db:27017/hcgateway?authSource=admin`
-   - Set the mongo DB username and password in the `docker-compose.yml` file as well.
+## Server setup
 
-    - Visit the firebase console > project settings > Service accounts and click generate new private key
-    - Save the file as `service-account.json` in the `api/` folder
+Requirements: Docker with the Compose plugin.
 
-3. **Running the Containers with Docker Compose**\
-    The project uses Docker Compose for easier container orchestration. To run the API using Docker Compose, run the following command:
-    ```bash
-   docker-compose up -d
+```bash
+cp .env.example .env
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"   # paste into FITSTREAM_API_KEY in .env
+docker compose up -d --build
+curl http://127.0.0.1:8080/api/health                           # {"status":"ok"}
+```
+
+- The dashboard is at `http://127.0.0.1:8080/` and is rebuilt every `FITSTREAM_REBUILD_SECONDS` (default 8 hours).
+  Rebuild immediately with `docker compose exec dashboard python build.py`.
+- Data lives in the `fitstream-data` Docker volume (`/data/fitstream.db`). Back it up with
+  `docker compose exec api python -c "import sqlite3; sqlite3.connect('/data/fitstream.db').backup(sqlite3.connect('/data/backup.db'))"`
+  and then `docker compose cp api:/data/backup.db .`.
+
+### HTTPS and access control
+
+The app refuses plain `http://` URLs, and nginx binds to `127.0.0.1` by default. Put an HTTPS front end in front of it,
+for example Cloudflare Tunnel, Caddy or Tailscale Funnel, pointing at `http://127.0.0.1:8080`.
+
+`/api/*` needs the API key. **The dashboard page itself has no login**, so protect `/` at the front end
+(the blog uses Cloudflare Access with Google sign-in). Without that, anyone with the URL can see your health data.
+
+### Running without Docker
+
+```bash
+cd server
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt
+export FITSTREAM_API_KEY=...  FITSTREAM_DB=./fitstream.db
+gunicorn --bind 127.0.0.1:8000 wsgi:app
+python build.py --db ./fitstream.db --out ./site/index.html    # e.g. from cron: 0 8,14,20 * * *
+```
+
+Tests: `pip install pytest && python -m pytest -q` (from `server/`).
+
+## Phone setup
+
+1. Build the APK (no Android SDK needed on the host):
+   ```bash
+   docker build -f android/Dockerfile -t fitstream-android android
+   docker run --rm -v "$PWD/android:/src" -v fitstream-gradle:/root/.gradle fitstream-android
    ```
-You can access the API at `http://localhost:6644`
+   Output: `android/app/build/outputs/apk/debug/app-debug.apk`. Install it with `adb install` or by copying it to the phone.
+   Android 9 (API 28) or newer is required.
+2. In Samsung Health: **Settings → Health Connect**, and allow Samsung Health to write the data types above.
+3. Open FitStream, tap **Grant permissions**, and allow everything, including background reads.
+4. Enter the server URL (`https://…`) and the API key, tap **Save**, then **Sync now**.
+5. Turn on automatic sync (default every 12 hours).
 
-### Manual
-#### Server
-- Prerequisites: Python 3, mongoDB
-- Clone this repository
-- `cd` into the api/ folder
-- run `pip install -r requirements.txt`
-- rename `.env.example` to `.env` and fill in the values
-- Visit the firebase console > project settings > Service accounts and click generate new private key
-- Save the file as `service-account.json` in the `api/` folder
-- run `python3 main.py` to start the server
+## API
 
-#### Mobile Application
-- Prerequisites: Node.js 18+, npm, Android Studio (SDK, build-tools, platform-tools), Java 17
-- in another window/tab, `cd` into the app/ folder
-- run `npm install`
-- If you wish to remove sentry:
+All endpoints except `/api/health` need the header `X-API-Key: <key>`.
+
+| Method | Path                | Description                                                       |
+|--------|---------------------|-------------------------------------------------------------------|
+| GET    | `/api/health`       | Liveness check                                                    |
+| POST   | `/api/sync`         | Upload a payload; returns row counts per table                    |
+| GET    | `/api/steps`        | Optional `from` / `to` (`YYYY-MM-DD`)                             |
+| GET    | `/api/sleep`        | Same filters                                                      |
+| GET    | `/api/heart_rate`   | Same filters                                                      |
+| GET    | `/api/workouts`     | Same filters                                                      |
+| GET    | `/api/readings`     | Same filters plus `metric` (`spo2`, `resting_hr`, `weight`, `body_fat`, `bmr`) |
+| GET    | `/api/sync_log`     | Last 50 syncs                                                     |
+
+Sync payload (all lists optional):
+
+```json
+{
+  "last_sync": "2026-10-30T08:00:00Z",
+  "steps":      [{"date": "2026-10-30", "count": 8000, "distance_meters": 6100.5}],
+  "heart_rate": [{"date": "2026-10-30", "avg_bpm": 72, "min_bpm": 51, "max_bpm": 141}],
+  "sleep":      [{"start_time": "...", "end_time": "...", "date": "2026-10-30", "duration_min": 450,
+                  "awake_min": 20, "light_min": 250, "deep_min": 90, "rem_min": 90}],
+  "workouts":   [{"start_time": "...", "end_time": "...", "date": "2026-10-30", "type": "running",
+                  "duration_min": 45, "calories": 410, "distance_km": 6.2, "avg_hr": 148, "max_hr": 171}],
+  "readings":   [{"metric": "weight", "time": "2026-10-30T05:00:00Z", "values": {"kg": 70.2}}]
+}
 ```
-yarn remove @sentry/react-native
-npx @sentry/wizard -i reactNative -p android --uninstall
-```
-- If you wish to change sentry to your own instance:
-    - Change the `dsn` in `App.js` to your own DSN
-    - Change the server, org name, and project name in app.json
-    - Change these details again in android/sentry.properties
-    - Change the DSN in the AndroidManifest.xml
-- run `npx patch-package` to apply a patch to the foreground service library
-- run `npm run android` to start the application, or `cd android && ./gradlew assembleRelease` to build the APK file
-    - It is also possible to now use eas build to build the APK file. You can find more at https://docs.expo.dev/build/eas-build/ **NOTE: This must be a local build, since you need to run patch-package before building the APK file.**
 
+## License
+
+GPL-3.0, inherited from HCGateway. See `LICENSE`.

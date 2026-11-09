@@ -1,24 +1,47 @@
-
 services:
   api:
-    image: ghcr.io/shuchirj/hcgateway:latest
-    ports:
-      - "6644:6644"
-    env_file:
-      - ./api/.env
-    container_name: hcgateway_api
-    restart: always
-    volumes:
-      - ./api/service-account.json:/app/service-account.json
-
-  db:
-    image: mongo
-    restart: always
-    ports:
-      - "27017:27017"
-    volumes:
-      - ./db:/data/db
-    container_name: hcgateway_db
+    build: ./server
+    image: fitstream-server
+    restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: example
+      FITSTREAM_API_KEY: ${FITSTREAM_API_KEY:?set FITSTREAM_API_KEY in .env}
+      FITSTREAM_DB: /data/fitstream.db
+    volumes:
+      - fitstream-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Rebuilds the static dashboard from SQLite on a fixed interval (replaces the blog's cron job).
+  dashboard:
+    image: fitstream-server
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      FITSTREAM_DB: /data/fitstream.db
+      FITSTREAM_OUT: /site/index.html
+      FITSTREAM_DAYS: ${FITSTREAM_DAYS:-90}
+      INTERVAL: ${FITSTREAM_REBUILD_SECONDS:-28800}
+    command: ["sh", "-c", "while true; do python build.py || echo 'dashboard build failed'; sleep \"$$INTERVAL\"; done"]
+    volumes:
+      - fitstream-data:/data
+      - fitstream-site:/site
+
+  nginx:
+    image: nginx:1.29-alpine
+    restart: unless-stopped
+    # Start after "dashboard" so the site volume is first created by the fitstream user, not root.
+    depends_on: [api, dashboard]
+    ports:
+      - "${FITSTREAM_BIND:-127.0.0.1}:${FITSTREAM_PORT:-8080}:8080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - fitstream-site:/srv/fitstream:ro
+
+volumes:
+  fitstream-data:
+  fitstream-site:
